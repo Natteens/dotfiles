@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  Natteens Dotfiles Installer  —  Arch Linux
-#  bash puro, sem deps externas, seta+espaco+enter
+#  Natteens Quick Setup — Linux Mint / Ubuntu / Debian-based
+#  sudo bash setup.sh
 # ==============================================================================
 set -euo pipefail
 
-DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WALLPAPERS_REPO="https://github.com/Natteens/Wallpapers.git"
-WALLPAPERS_DIR="$HOME/Pictures/Wallpapers"
-LOG_FILE="/tmp/dotfiles-install.log"
-TMPDIR_WORK=""
+# ── Root check ─────────────────────────────────────────────────────────────────
+if [[ $EUID -ne 0 ]]; then
+    echo "Execute com sudo: sudo bash setup.sh"
+    exit 1
+fi
+
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME=$(eval echo "~$REAL_USER")
+LOG_FILE="/tmp/natteens-setup.log"
+: > "$LOG_FILE"
 
 # ── Colors ─────────────────────────────────────────────────────────────────────
 bold=$'\e[1m'; dim=$'\e[2m'; reset=$'\e[0m'
@@ -39,111 +44,89 @@ spinner_stop() {
     [[ -n "$_spin_pid" ]] && kill "$_spin_pid" 2>/dev/null || true
     _spin_pid=""; printf "\r\033[2K"
 }
+
+# ── run_silent: não trava mesmo se demorar ─────────────────────────────────────
 run_silent() {
     local msg="$1"; shift
     spinner_start "$msg"
-    if "$@" >> "$LOG_FILE" 2>&1; then
-        spinner_stop; print_ok "$msg"
+    local ret=0
+    "$@" >> "$LOG_FILE" 2>&1 || ret=$?
+    spinner_stop
+    if [[ $ret -eq 0 ]]; then
+        print_ok "$msg"
     else
-        spinner_stop; print_err "$msg — falhou (ver $LOG_FILE)"; return 1
+        print_err "$msg — falhou (ver $LOG_FILE)"
+        return 1
     fi
 }
 
 # ── Package helpers ────────────────────────────────────────────────────────────
-has()           { command -v "$1" &>/dev/null; }
-pkg_pacman()    { pacman -Qi "$1" &>/dev/null 2>&1; }
-pkg_flatpak()   { flatpak list --app 2>/dev/null | grep -qi "$1"; }
-pacman_install(){ print_log "pacman: $*"; sudo pacman -S --needed --noconfirm "$@" >> "$LOG_FILE" 2>&1; }
-aur_install()   { print_log "yay: $*";   yay -S --needed --noconfirm "$@"          >> "$LOG_FILE" 2>&1; }
-paru_install()  { print_log "paru: $*";  paru -S --needed --noconfirm "$@"         >> "$LOG_FILE" 2>&1; }
+has()            { command -v "$1" &>/dev/null; }
+pkg_apt()        { dpkg -l "$1" 2>/dev/null | grep -q '^ii'; }
+pkg_flatpak()    { flatpak list --app 2>/dev/null | grep -qi "$1"; }
+pkg_snap()       { snap list 2>/dev/null | grep -qi "$1"; }
 
-# ── Detection ──────────────────────────────────────────────────────────────────
+apt_install() {
+    print_log "apt: $*"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" >> "$LOG_FILE" 2>&1
+}
+
+flatpak_install() {
+    print_log "flatpak: $*"
+    sudo -u "$REAL_USER" flatpak install -y --noninteractive flathub "$@" >> "$LOG_FILE" 2>&1
+}
+
+as_user() {
+    sudo -u "$REAL_USER" "$@"
+}
+
+# ── Detect distro & package manager ───────────────────────────────────────────
 detect_system() {
-    # Tools
-    HAS_YAY=false;      has yay              && HAS_YAY=true     || true
-    HAS_PARU=false;     has paru             && HAS_PARU=true    || true
-    HAS_ZSH=false;      has zsh              && HAS_ZSH=true     || true
-    HAS_NVIM=false;     has nvim             && HAS_NVIM=true    || true
-    HAS_KITTY=false;    has kitty            && HAS_KITTY=true   || true
-    HAS_FLATPAK=false;  has flatpak          && HAS_FLATPAK=true || true
-    HAS_STOW=false;     has stow             && HAS_STOW=true    || true
-    HAS_GH=false;       has gh               && HAS_GH=true      || true
-    HAS_SDDM=false;     pkg_pacman sddm      && HAS_SDDM=true    || true
-    HAS_PIPEWIRE=false; pkg_pacman pipewire  && HAS_PIPEWIRE=true || true
-    HAS_BT=false;       pkg_pacman bluez     && HAS_BT=true      || true
+    DISTRO_ID=""
+    DISTRO_NAME=""
+    PKG_MANAGER=""
 
-    # Apps pacman/AUR
-    HAS_BRAVE=false;    pkg_pacman brave-bin       && HAS_BRAVE=true    || true
-    HAS_STEAM=false;    pkg_pacman steam           && HAS_STEAM=true    || true
-    HAS_VESKTOP=false;  pkg_pacman vesktop-bin     && HAS_VESKTOP=true  || true
-    HAS_SPOTIFY=false;  pkg_pacman spotify         && HAS_SPOTIFY=true  || true
-    HAS_FRESH=false;    pkg_pacman fresh-editor    && HAS_FRESH=true    || true
-    HAS_EQUIBOP=false;  pkg_pacman equibop         && HAS_EQUIBOP=true  || true
-    HAS_HEROIC=false;   pkg_pacman heroic-games-launcher-bin && HAS_HEROIC=true || true
-    HAS_BIBATA=false;   pkg_pacman bibata-cursor-theme-bin   && HAS_BIBATA=true || true
-    HAS_SPICETIFY=false; has spicetify             && HAS_SPICETIFY=true || true
-
-    # Flatpak apps
-    HAS_GH_DESKTOP=false; pkg_flatpak "github-desktop-plus" && HAS_GH_DESKTOP=true || true
-    HAS_HEROIC_FLAT=false; pkg_flatpak "heroic"             && HAS_HEROIC_FLAT=true || true
-
-    # GPU / CPU
-    GPU_NVIDIA=false; GPU_AMD=false; CPU_AMD=false; CPU_INTEL=false
-    lspci 2>/dev/null | grep -qi 'nvidia'            && GPU_NVIDIA=true || true
-    lspci 2>/dev/null | grep -qi 'amd\|radeon\|ati'  && GPU_AMD=true   || true
-    grep -qi 'amd'   /proc/cpuinfo 2>/dev/null       && CPU_AMD=true   || true
-    grep -qi 'intel' /proc/cpuinfo 2>/dev/null       && CPU_INTEL=true || true
-    IS_VM=false; systemd-detect-virt --quiet 2>/dev/null && IS_VM=true || true
-}
-
-# ── Bootstrap ──────────────────────────────────────────────────────────────────
-check_arch() { [[ -f /etc/arch-release ]] || { echo "Apenas Arch Linux suportado."; exit 1; }; }
-
-ask_yn() {
-    # ask_yn "pergunta" → retorna 0 para sim, 1 para nao
-    local msg="$1"
-    printf "  ${yellow}?${reset}  %s [S/n] " "$msg"
-    read -r ans
-    [[ "${ans,,}" != "n" ]]
-}
-
-setup_deps() {
-    print_sep
-    echo "  ${bold}Verificando dependencias do instalador...${reset}"
-    print_sep; echo
-
-    # yay
-    if ! $HAS_YAY; then
-        print_warn "yay nao encontrado."
-        if ask_yn "Instalar yay (necessario para pacotes AUR)?"; then
-            print_step "Instalando yay..."
-            pacman_install git base-devel
-            TMPDIR_WORK=$(mktemp -d)
-            git clone https://aur.archlinux.org/yay.git "$TMPDIR_WORK/yay" >> "$LOG_FILE" 2>&1
-            (cd "$TMPDIR_WORK/yay" && makepkg -si --noconfirm >> "$LOG_FILE" 2>&1)
-            rm -rf "$TMPDIR_WORK"
-            HAS_YAY=true
-            print_ok "yay instalado."
-        else
-            print_warn "Sem yay — pacotes AUR nao poderao ser instalados."
-        fi
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        DISTRO_ID="${ID:-}"
+        DISTRO_NAME="${NAME:-}"
     fi
 
-    # paru
-    if ! $HAS_PARU; then
-        print_warn "paru nao encontrado."
-        if ask_yn "Instalar paru (AUR helper alternativo, necessario para bibata cursor)?"; then
-            print_step "Instalando paru..."
-            TMPDIR_WORK=$(mktemp -d)
-            git clone https://aur.archlinux.org/paru.git "$TMPDIR_WORK/paru" >> "$LOG_FILE" 2>&1
-            (cd "$TMPDIR_WORK/paru" && makepkg -si --noconfirm >> "$LOG_FILE" 2>&1)
-            rm -rf "$TMPDIR_WORK"
-            HAS_PARU=true
-            print_ok "paru instalado."
-        fi
+    if has apt-get; then
+        PKG_MANAGER="apt"
+    elif has dnf; then
+        PKG_MANAGER="dnf"
+    elif has pacman; then
+        PKG_MANAGER="pacman"
+    else
+        PKG_MANAGER="unknown"
     fi
 
-    echo
+    # GPU
+    GPU_NVIDIA=false; GPU_AMD=false
+    lspci 2>/dev/null | grep -qi 'nvidia'           && GPU_NVIDIA=true || true
+    lspci 2>/dev/null | grep -qi 'amd\|radeon\|ati' && GPU_AMD=true   || true
+
+    # Installed checks
+    HAS_ZSH=false;       has zsh                    && HAS_ZSH=true       || true
+    HAS_NVIM=false;      has nvim                   && HAS_NVIM=true      || true
+    HAS_KITTY=false;     has kitty                  && HAS_KITTY=true     || true
+    HAS_FLATPAK=false;   has flatpak                && HAS_FLATPAK=true   || true
+    HAS_GH=false;        has gh                     && HAS_GH=true        || true
+    HAS_BRAVE=false;     has brave-browser          && HAS_BRAVE=true     || true
+    HAS_VESKTOP=false;   pkg_flatpak "dev.vencord.Vesktop" && HAS_VESKTOP=true || true
+    HAS_SPOTIFY=false;   pkg_flatpak "com.spotify.Client" && HAS_SPOTIFY=true || true
+    HAS_STEAM=false;     pkg_apt steam-launcher     && HAS_STEAM=true     || true
+    HAS_HEROIC=false;    pkg_flatpak "com.heroicgameslauncher.hgl" && HAS_HEROIC=true || true
+    HAS_UNITY=false;     [[ -f "/opt/unityhub/unityhub" ]] && HAS_UNITY=true || true
+    HAS_JETBRAINS=false; [[ -f "$REAL_HOME/.local/share/JetBrains/Toolbox/bin/jetbrains-toolbox" ]] && HAS_JETBRAINS=true || true
+    HAS_VSCODE=false;    has code                   && HAS_VSCODE=true    || true
+    HAS_GH_DESKTOP=false; pkg_flatpak "io.github.pol_rivero.github-desktop-plus" && HAS_GH_DESKTOP=true || true
+    HAS_SPICETIFY=false; has spicetify              && HAS_SPICETIFY=true || true
+    HAS_FFMPEG=false;    has ffmpeg                 && HAS_FFMPEG=true    || true
+
+    IS_VM=false
+    systemd-detect-virt --quiet 2>/dev/null && IS_VM=true || true
 }
 
 # ── Banner ─────────────────────────────────────────────────────────────────────
@@ -152,35 +135,48 @@ show_banner() {
     echo
     echo "  ${bold}╭──────────────────────────────────────────────╮${reset}"
     echo "  ${bold}│                                              │${reset}"
-    echo "  ${bold}│   Natteens Dotfiles Installer                │${reset}"
-    echo "  ${bold}│   ${dim}Arch Linux  ·  stow  ·  yay  ·  paru${reset}${bold}      │${reset}"
+    echo "  ${bold}│   Natteens Quick Setup                       │${reset}"
+    echo "  ${bold}│   ${dim}Linux Mint · Ubuntu · Debian-based${reset}${bold}        │${reset}"
     echo "  ${bold}│                                              │${reset}"
     echo "  ${bold}╰──────────────────────────────────────────────╯${reset}"
     echo
 
-    local gpu=""; $GPU_NVIDIA && gpu+="NVIDIA "; $GPU_AMD && gpu+="AMD"; [[ -z "$gpu" ]] && gpu="nenhuma"
-    local cpu=""; $CPU_AMD && cpu="AMD"; $CPU_INTEL && cpu="${cpu:+$cpu + }Intel"
+    local gpu=""; $GPU_NVIDIA && gpu+="NVIDIA "; $GPU_AMD && gpu+="AMD"; [[ -z "$gpu" ]] && gpu="não detectada"
 
-    echo "  ${dim}GPU    ${reset}${cyan}$gpu${reset}"
-    echo "  ${dim}CPU    ${reset}${cyan}$cpu${reset}"
-    echo "  ${dim}Shell  ${reset}$($HAS_ZSH      && echo "${cyan}zsh${reset} ${dim}(instalado)${reset}"    || echo "${gray}bash${reset}")"
-    echo "  ${dim}Audio  ${reset}$($HAS_PIPEWIRE && echo "${cyan}pipewire${reset}"                         || echo "${gray}nao detectado${reset}")"
-    echo "  ${dim}yay    ${reset}$($HAS_YAY      && echo "${green}ok${reset}"                              || echo "${yellow}nao encontrado${reset}")"
-    echo "  ${dim}paru   ${reset}$($HAS_PARU     && echo "${green}ok${reset}"                              || echo "${yellow}nao encontrado${reset}")"
-    $IS_VM && echo "  ${dim}VM     ${reset}${yellow}ambiente virtual${reset}"
+    echo "  ${dim}Distro  ${reset}${cyan}$DISTRO_NAME${reset}"
+    echo "  ${dim}PKG     ${reset}${cyan}$PKG_MANAGER${reset}"
+    echo "  ${dim}GPU     ${reset}${cyan}$gpu${reset}"
+    echo "  ${dim}User    ${reset}${cyan}$REAL_USER${reset}"
+    $IS_VM && echo "  ${dim}VM      ${reset}${yellow}ambiente virtual detectado${reset}"
+    echo
+}
+
+# ── Bootstrap deps do instalador ───────────────────────────────────────────────
+bootstrap() {
+    print_sep
+    echo "  ${bold}Verificando dependências do instalador...${reset}"
+    print_sep; echo
+
+    run_silent "apt update" apt-get update -qq
+
+    has curl   || run_silent "curl"   apt_install curl
+    has wget   || run_silent "wget"   apt_install wget
+    has git    || run_silent "git"    apt_install git
+    has lspci  || run_silent "pciutils" apt_install pciutils
+
+    if ! $HAS_FLATPAK; then
+        run_silent "flatpak" apt_install flatpak
+        run_silent "flathub" flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+        HAS_FLATPAK=true
+        print_warn "Flatpak instalado — pode precisar reiniciar após o setup"
+    fi
+
     echo
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SELETOR BASH PURO
-#  seta cima/baixo = navegar
-#  espaco          = marcar/desmarcar
-#  a               = marcar tudo
-#  n               = desmarcar tudo
-#  enter           = confirmar
-#  q / ctrl-c      = sair
 # ══════════════════════════════════════════════════════════════════════════════
-
 declare -a _KEYS=()
 declare -a _LABELS=()
 declare -a _CHECKED=()
@@ -194,7 +190,6 @@ menu_sep() {
 }
 
 menu_item() {
-    # menu_item key label installed(true/false)
     local key="$1" label="$2" inst="$3"
     _KEYS+=("$key")
     _LABELS+=("$label")
@@ -224,7 +219,6 @@ run_selector() {
     local visible=24
     local offset=0
 
-    # Pula pra primeiro item
     while [[ $cursor -lt $total && "${_IS_SEP[$cursor]}" == "1" ]]; do ((cursor++)) || true; done
 
     tput smcup 2>/dev/null || true
@@ -235,7 +229,7 @@ run_selector() {
         printf '\033[2J' 2>/dev/null || true
         echo
         printf "  ${bold}Selecione os itens para instalar${reset}\n"
-        printf "  ${dim}↑↓=navegar  espaco=marcar  a=tudo  n=nenhum  enter=confirmar  q=sair${reset}\n\n"
+        printf "  ${dim}↑↓=navegar  espaço=marcar  a=tudo  n=nenhum  enter=confirmar  q=sair${reset}\n\n"
 
         local end=$(( offset + visible ))
         [[ $end -gt $total ]] && end=$total
@@ -244,7 +238,6 @@ run_selector() {
             _render_line "$i" "$cursor"
         done
 
-        # Preenche espaco vazio pra nao deixar lixo na tela
         local drawn=$(( end - offset ))
         for (( i=drawn; i<visible+2; i++ )); do printf "\033[2K\n"; done
 
@@ -318,281 +311,356 @@ build_catalog() {
     _KEYS=(); _LABELS=(); _CHECKED=(); _IS_SEP=()
 
     menu_sep "Base & Shell"
-    menu_item base        "Pacotes base        git make cmake curl wget"  "false"
-    menu_item yay_pkg     "yay                 AUR helper"                "$HAS_YAY"
-    menu_item paru_pkg    "paru                AUR helper alternativo"    "$HAS_PARU"
-    menu_item zsh         "Zsh                 zsh + fzf + zoxide"        "$HAS_ZSH"
-    menu_item nvim        "Neovim              editor"                    "$HAS_NVIM"
-    menu_item fresh       "fresh-editor        editor leve (AUR)"        "$HAS_FRESH"
-    menu_item kitty       "Kitty               terminal"                  "$HAS_KITTY"
-    menu_item fonts       "Fontes              JetBrains Mono Nerd + Noto" "false"
-    menu_item bibata      "Bibata Cursor       tema de cursor (paru)"     "$HAS_BIBATA"
-    menu_item qt          "Qt5 / Qt6           wayland support"           "false"
-    menu_item sddm        "SDDM                display manager"           "$HAS_SDDM"
-    menu_item pipewire    "Pipewire            audio + wireplumber"       "$HAS_PIPEWIRE"
-    menu_item bluetooth   "Bluetooth           bluez + blueman"           "$HAS_BT"
-    menu_item flatpak     "Flatpak             + Flathub"                 "$HAS_FLATPAK"
-    menu_item gh          "GitHub CLI          + openssh"                 "$HAS_GH"
+    menu_item base       "Pacotes base         build-essential curl wget git" "false"
+    menu_item zsh        "Zsh                  + fzf + zoxide"                "$HAS_ZSH"
+    menu_item nvim       "Neovim               editor"                        "$HAS_NVIM"
+    menu_item kitty      "Kitty                terminal"                      "$HAS_KITTY"
+    menu_item fonts      "Fontes               JetBrains Nerd + Noto"         "false"
+    menu_item ffmpeg     "FFmpeg               codec + mídia"                 "$HAS_FFMPEG"
+    menu_item gh         "GitHub CLI           + openssh"                     "$HAS_GH"
+    menu_item flatpak    "Flatpak              + Flathub"                     "$HAS_FLATPAK"
 
     menu_sep "Apps"
-    menu_item brave       "Brave               browser"                   "$HAS_BRAVE"
-    menu_item vesktop     "Vesktop             Discord + Vencord"         "$HAS_VESKTOP"
-    menu_item equibop     "Equibop             cliente Discord alternativo" "$HAS_EQUIBOP"
-    menu_item spotify     "Spotify             musica"                    "$HAS_SPOTIFY"
-    menu_item spicetify   "Spicetify           tema pro Spotify"          "$HAS_SPICETIFY"
-    menu_item gh_desktop  "GitHub Desktop+     flatpak"                   "$HAS_GH_DESKTOP"
-    menu_item jetbrains   "JetBrains Toolbox   IDEs"                      "$(pkg_pacman jetbrains-toolbox && echo true || echo false)"
-    menu_item unity       "Unity Hub           game engine"               "$(pkg_pacman unityhub && echo true || echo false)"
+    menu_item brave      "Brave                browser"                       "$HAS_BRAVE"
+    menu_item vesktop    "Vesktop              Discord + Vencord (flatpak)"   "$HAS_VESKTOP"
+    menu_item spotify    "Spotify              flatpak"                       "$HAS_SPOTIFY"
+    menu_item spicetify  "Spicetify            tema pro Spotify"              "$HAS_SPICETIFY"
+    menu_item gh_desktop "GitHub Desktop+      flatpak"                       "$HAS_GH_DESKTOP"
+    menu_item vscode     "VS Code              editor"                        "$HAS_VSCODE"
+    menu_item jetbrains  "JetBrains Toolbox    IDEs"                          "$HAS_JETBRAINS"
+    menu_item unity      "Unity Hub            game engine"                   "$HAS_UNITY"
 
     menu_sep "Games"
-    menu_item steam       "Steam               plataforma de jogos"       "$HAS_STEAM"
-    menu_item heroic      "Heroic (AUR)        Epic / GOG"                "$HAS_HEROIC"
-    menu_item heroic_flat "Heroic (Flatpak)    Epic / GOG"                "$HAS_HEROIC_FLAT"
+    menu_item steam      "Steam                plataforma de jogos"           "$HAS_STEAM"
+    menu_item heroic     "Heroic               Epic / GOG (flatpak)"          "$HAS_HEROIC"
 
     menu_sep "Drivers"
-    menu_item nvidia      "NVIDIA              proprietario + Wayland"    "false"
-    menu_item amd_gpu     "AMD GPU             mesa + vulkan-radeon"      "false"
-    menu_item amd_cpu     "AMD CPU             amd-ucode microcódigo"     "false"
-    menu_item intel_gpu   "Intel GPU           mesa + vulkan-intel"       "false"
-    menu_item intel_cpu   "Intel CPU           intel-ucode microcódigo"   "false"
+    menu_item nvidia     "NVIDIA               driver proprietário"           "false"
+    menu_item amd_gpu    "AMD GPU              mesa + vulkan"                 "false"
 
-    menu_sep "Dotfiles"
-    menu_item wallpapers  "Wallpapers          ~/Pictures/Wallpapers"     "$([[ -d "$WALLPAPERS_DIR" ]] && echo true || echo false)"
-    menu_item symlinks    "Symlinks            aplicar via stow"          "false"
+    menu_sep "Sistema"
+    menu_item fix_mic    "Fix Microfone        PulseAudio noise cancel"       "false"
+    menu_item tweaks     "Tweaks sistema       swappiness + performance"      "false"
+    menu_item codecs     "Codecs               mp3, h264, aac, etc"           "false"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  INSTALL MODULES
 # ══════════════════════════════════════════════════════════════════════════════
 
-install_base() { run_silent "pacotes base" pacman_install git nano base-devel make cmake curl wget unzip; }
-
-install_yay_pkg() {
-    $HAS_YAY && { print_warn "yay ja instalado"; return; }
-    print_step "Instalando yay..."
-    pacman_install git base-devel
-    TMPDIR_WORK=$(mktemp -d)
-    git clone https://aur.archlinux.org/yay.git "$TMPDIR_WORK/yay" >> "$LOG_FILE" 2>&1
-    (cd "$TMPDIR_WORK/yay" && makepkg -si --noconfirm >> "$LOG_FILE" 2>&1)
-    rm -rf "$TMPDIR_WORK"; HAS_YAY=true
-    print_ok "yay instalado."
-}
-
-install_paru_pkg() {
-    $HAS_PARU && { print_warn "paru ja instalado"; return; }
-    print_step "Instalando paru..."
-    pacman_install git base-devel
-    TMPDIR_WORK=$(mktemp -d)
-    git clone https://aur.archlinux.org/paru.git "$TMPDIR_WORK/paru" >> "$LOG_FILE" 2>&1
-    (cd "$TMPDIR_WORK/paru" && makepkg -si --noconfirm >> "$LOG_FILE" 2>&1)
-    rm -rf "$TMPDIR_WORK"; HAS_PARU=true
-    print_ok "paru instalado."
+install_base() {
+    run_silent "build-essential + base" apt_install \
+        build-essential make cmake curl wget git unzip zip \
+        ca-certificates gnupg lsb-release software-properties-common \
+        apt-transport-https xdg-utils
 }
 
 install_zsh() {
-    local pkgs=()
-    has zsh    || pkgs+=(zsh)
-    has zoxide || pkgs+=(zoxide)
-    has fzf    || pkgs+=(fzf)
-    [[ ${#pkgs[@]} -gt 0 ]] && run_silent "zsh + zoxide + fzf" pacman_install "${pkgs[@]}"
-    grep -q "/usr/bin/zsh" /etc/shells 2>/dev/null || echo "/usr/bin/zsh" | sudo tee -a /etc/shells >> "$LOG_FILE"
-    chsh -s /usr/bin/zsh && print_ok "zsh = shell padrao" || print_warn "rode 'chsh -s /usr/bin/zsh' manualmente"
+    has zsh    || run_silent "zsh"    apt_install zsh
+    has fzf    || run_silent "fzf"    apt_install fzf
+    has zoxide || {
+        run_silent "zoxide" bash -c \
+            "curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sudo -u $REAL_USER bash"
+    }
+    grep -q "/usr/bin/zsh" /etc/shells 2>/dev/null || echo "/usr/bin/zsh" | tee -a /etc/shells >> "$LOG_FILE"
+    chsh -s /usr/bin/zsh "$REAL_USER" && print_ok "zsh = shell padrão" || print_warn "rode 'chsh -s /usr/bin/zsh' manualmente"
 }
 
-install_nvim()   { $HAS_NVIM  && { print_warn "neovim ja instalado";    return; }; run_silent "neovim"       pacman_install neovim; }
-install_fresh()  { $HAS_FRESH && { print_warn "fresh-editor ja inst.";  return; }; run_silent "fresh-editor" aur_install fresh-editor; }
+install_nvim() {
+    $HAS_NVIM && { print_warn "neovim já instalado"; return; }
+    # Usa snap pra versão mais recente no Mint/Ubuntu
+    if has snap; then
+        run_silent "neovim (snap)" snap install nvim --classic
+    else
+        run_silent "neovim (apt)" apt_install neovim
+    fi
+}
 
 install_kitty() {
-    $HAS_KITTY && { print_warn "kitty ja instalado"; return; }
-    run_silent "kitty" pacman_install kitty
-    mkdir -p "$HOME/.config/kitty"
-    grep -q "shell /usr/bin/zsh" "$HOME/.config/kitty/kitty.conf" 2>/dev/null \
-        || echo "shell /usr/bin/zsh" >> "$HOME/.config/kitty/kitty.conf"
+    $HAS_KITTY && { print_warn "kitty já instalado"; return; }
+    run_silent "kitty" bash -c \
+        "curl -sSfL https://sw.kovidgoyal.net/kitty/installer.sh | sudo -u $REAL_USER sh /dev/stdin"
+    # Symlink
+    as_user ln -sf "$REAL_HOME/.local/kitty.app/bin/kitty" "$REAL_HOME/.local/bin/kitty" 2>/dev/null || true
+    as_user ln -sf "$REAL_HOME/.local/kitty.app/bin/kitten" "$REAL_HOME/.local/bin/kitten" 2>/dev/null || true
 }
 
 install_fonts() {
-    pkg_pacman ttf-jetbrains-mono-nerd \
-        && print_warn "JetBrains Mono Nerd ja instalado" \
-        || run_silent "JetBrains Mono Nerd" aur_install ttf-jetbrains-mono-nerd
-    run_silent "Noto Fonts + Emoji" pacman_install noto-fonts noto-fonts-emoji
+    run_silent "fontes base" apt_install fonts-noto fonts-noto-color-emoji
+    # JetBrains Mono Nerd
+    local font_dir="$REAL_HOME/.local/share/fonts"
+    as_user mkdir -p "$font_dir"
+    run_silent "JetBrains Mono Nerd" bash -c "
+        cd /tmp
+        wget -q 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz' -O JetBrainsMono.tar.xz
+        mkdir -p jb_font && tar -xf JetBrainsMono.tar.xz -C jb_font
+        cp jb_font/*.ttf '$font_dir/' 2>/dev/null || true
+        rm -rf jb_font JetBrainsMono.tar.xz
+    "
+    fc-cache -f "$font_dir" >> "$LOG_FILE" 2>&1
+    print_ok "Fontes instaladas"
 }
 
-install_bibata() {
-    $HAS_BIBATA && { print_warn "bibata ja instalado"; return; }
-    if ! $HAS_PARU; then
-        print_warn "paru necessario para bibata — instale paru primeiro"
-        return 1
-    fi
-    run_silent "bibata-cursor-theme-bin" paru_install bibata-cursor-theme-bin
-}
-
-install_qt()     { run_silent "Qt5 + Qt6 + Wayland" pacman_install qt5-base qt6-base qt5-wayland qt6-wayland; }
-
-install_sddm() {
-    $HAS_SDDM || run_silent "sddm" pacman_install sddm
-    run_silent "sddm Qt6 deps" pacman_install qt6-svg qt6-virtualkeyboard qt6-multimedia
-    run_silent "habilitar sddm" sudo systemctl enable sddm
-}
-
-install_pipewire() {
-    $HAS_PIPEWIRE && { print_warn "pipewire ja instalado"; return; }
-    run_silent "pipewire + wireplumber" pacman_install pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber
-    run_silent "habilitar pipewire" systemctl --user enable --now pipewire pipewire-pulse wireplumber
-}
-
-install_bluetooth() {
-    $HAS_BT && { print_warn "bluez ja instalado"; return; }
-    run_silent "bluez + blueman" pacman_install bluez bluez-utils blueman
-    run_silent "habilitar bluetooth" sudo systemctl enable --now bluetooth
-}
-
-install_flatpak() {
-    $HAS_FLATPAK || run_silent "flatpak" pacman_install flatpak
-    run_silent "Flathub" flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+install_ffmpeg() {
+    $HAS_FFMPEG && { print_warn "ffmpeg já instalado"; return; }
+    run_silent "ffmpeg" apt_install ffmpeg
 }
 
 install_gh() {
-    $HAS_GH || run_silent "github-cli + openssh" pacman_install github-cli openssh
-    print_step "Autenticando GitHub (siga as instrucoes)..."
-    gh auth login && print_ok "GitHub CLI autenticado."
+    if ! $HAS_GH; then
+        run_silent "github-cli repo" bash -c "
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo 'deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' > /etc/apt/sources.list.d/github-cli.list
+            apt-get update -qq
+        "
+        run_silent "github-cli" apt_install gh openssh-client
+    fi
+    print_step "Autenticando GitHub (siga as instruções)..."
+    as_user gh auth login && print_ok "GitHub CLI autenticado." || print_warn "Autentique manualmente com: gh auth login"
 }
 
-install_brave()   { $HAS_BRAVE   && { print_warn "Brave ja instalado";   return; }; run_silent "Brave"   aur_install brave-bin; }
+install_flatpak() {
+    $HAS_FLATPAK && { print_warn "flatpak já instalado"; return; }
+    run_silent "flatpak" apt_install flatpak
+    run_silent "flathub" flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    print_warn "Reinicie o sistema para ativar o Flatpak completamente"
+}
+
+install_brave() {
+    $HAS_BRAVE && { print_warn "Brave já instalado"; return; }
+    run_silent "brave repo" bash -c "
+        curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg \
+            https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+        echo 'deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main' \
+            > /etc/apt/sources.list.d/brave-browser-release.list
+        apt-get update -qq
+    "
+    run_silent "brave-browser" apt_install brave-browser
+}
 
 install_vesktop() {
-    $HAS_VESKTOP && { print_warn "Vesktop ja instalado"; return; }
-    run_silent "Vesktop (Discord + Vencord)" aur_install vesktop-bin
-}
-
-install_equibop() {
-    $HAS_EQUIBOP && { print_warn "Equibop ja instalado"; return; }
-    # Equibop precisa de npm pra buildar
-    has npm || run_silent "npm (dep equibop)" pacman_install npm
-    run_silent "Equibop" aur_install equibop
+    $HAS_VESKTOP && { print_warn "Vesktop já instalado"; return; }
+    run_silent "Vesktop (flatpak)" flatpak_install dev.vencord.Vesktop
 }
 
 install_spotify() {
-    $HAS_SPOTIFY || run_silent "Spotify" aur_install spotify
-    print_ok "Spotify instalado."
+    $HAS_SPOTIFY && { print_warn "Spotify já instalado"; return; }
+    run_silent "Spotify (flatpak)" flatpak_install com.spotify.Client
 }
 
 install_spicetify() {
-    $HAS_SPICETIFY && { print_warn "spicetify ja instalado"; return; }
-    run_silent "spicetify-cli" aur_install spicetify-cli
-    sudo chmod a+wr /opt/spotify /opt/spotify/Apps -R 2>/dev/null || true
-    spicetify backup apply >> "$LOG_FILE" 2>&1 || true
-    print_ok "Spicetify configurado."
+    $HAS_SPICETIFY && { print_warn "spicetify já instalado"; return; }
+    run_silent "spicetify-cli" bash -c \
+        "curl -fsSL https://raw.githubusercontent.com/spicetify/cli/main/install.sh | sudo -u $REAL_USER sh"
+    # Permissão pra Spotify flatpak
+    local spotify_path="$REAL_HOME/.var/app/com.spotify.Client/config/spotify"
+    [[ -d "$spotify_path" ]] && chmod a+wr "$spotify_path" -R 2>/dev/null || true
+    as_user spicetify backup apply >> "$LOG_FILE" 2>&1 || true
+    print_ok "Spicetify configurado"
 }
 
 install_gh_desktop() {
-    $HAS_GH_DESKTOP && { print_warn "GitHub Desktop+ ja instalado"; return; }
-    if ! $HAS_FLATPAK; then
-        print_warn "Flatpak necessario — instale Flatpak primeiro"
-        return 1
-    fi
-    run_silent "GitHub Desktop Plus (flatpak)" \
-        flatpak install -y --noninteractive flathub io.github.pol_rivero.github-desktop-plus
+    $HAS_GH_DESKTOP && { print_warn "GitHub Desktop+ já instalado"; return; }
+    run_silent "GitHub Desktop+ (flatpak)" flatpak_install io.github.pol_rivero.github-desktop-plus
 }
 
-install_jetbrains() { pkg_pacman jetbrains-toolbox && { print_warn "JetBrains ja instalado"; return; }; run_silent "JetBrains Toolbox" aur_install jetbrains-toolbox; }
-install_unity()     { pkg_pacman unityhub && { print_warn "Unity Hub ja instalado"; return; }; run_silent "Unity Hub" aur_install unityhub; }
+install_vscode() {
+    $HAS_VSCODE && { print_warn "VS Code já instalado"; return; }
+    run_silent "vscode repo" bash -c "
+        wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg
+        echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main' \
+            > /etc/apt/sources.list.d/vscode.list
+        apt-get update -qq
+    "
+    run_silent "VS Code" apt_install code
+}
+
+install_jetbrains() {
+    $HAS_JETBRAINS && { print_warn "JetBrains Toolbox já instalado"; return; }
+    run_silent "JetBrains Toolbox" bash -c "
+        cd /tmp
+        wget -q 'https://data.services.jetbrains.com/products/download?platform=linux&code=TBA' -O jetbrains-toolbox.tar.gz 2>/dev/null || \
+        curl -sL 'https://data.services.jetbrains.com/products/download?platform=linux&code=TBA' -o jetbrains-toolbox.tar.gz
+        mkdir -p jb_toolbox && tar -xzf jetbrains-toolbox.tar.gz -C jb_toolbox --strip-components=1
+        cp jb_toolbox/jetbrains-toolbox /usr/local/bin/
+        rm -rf jb_toolbox jetbrains-toolbox.tar.gz
+    "
+    print_warn "Execute 'jetbrains-toolbox' para iniciar e instalar IDEs"
+}
+
+install_unity() {
+    $HAS_UNITY && { print_warn "Unity Hub já instalado"; return; }
+    run_silent "Unity Hub repo" bash -c "
+        wget -qO - https://hub.unity3d.com/linux/keys/public | gpg --dearmor > /usr/share/keyrings/Unity_Technologies_ApS.gpg
+        echo 'deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main' \
+            > /etc/apt/sources.list.d/unityhub.list
+        apt-get update -qq
+    "
+    run_silent "Unity Hub" apt_install unityhub
+}
 
 install_steam() {
-    $HAS_STEAM && { print_warn "Steam ja instalado"; return; }
-    grep -q "^\[multilib\]" /etc/pacman.conf || {
-        printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' | sudo tee -a /etc/pacman.conf >> "$LOG_FILE"
-        sudo pacman -Sy >> "$LOG_FILE" 2>&1
-    }
-    run_silent "Steam" pacman_install steam
+    $HAS_STEAM && { print_warn "Steam já instalado"; return; }
+    run_silent "multiarch i386" dpkg --add-architecture i386
+    run_silent "apt update" apt-get update -qq
+    run_silent "Steam" bash -c "
+        wget -qO /tmp/steam.deb 'https://cdn.akamai.steamstatic.com/client/installer/steam.deb'
+        DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/steam.deb
+        rm -f /tmp/steam.deb
+    "
 }
 
 install_heroic() {
-    $HAS_HEROIC && { print_warn "Heroic (AUR) ja instalado"; return; }
-    run_silent "Heroic (AUR)" aur_install heroic-games-launcher-bin
-}
-
-install_heroic_flat() {
-    $HAS_HEROIC_FLAT && { print_warn "Heroic (flatpak) ja instalado"; return; }
-    if ! $HAS_FLATPAK; then print_warn "Flatpak necessario"; return 1; fi
-    run_silent "Heroic (Flatpak)" \
-        flatpak install -y --noninteractive flathub com.heroicgameslauncher.hgl
+    $HAS_HEROIC && { print_warn "Heroic já instalado"; return; }
+    run_silent "Heroic (flatpak)" flatpak_install com.heroicgameslauncher.hgl
 }
 
 install_nvidia() {
-    local use_open=false
-    lspci 2>/dev/null | grep -qi 'rtx\|GeForce 20\|GeForce 30\|GeForce 40\|GeForce 50' && use_open=true || true
-    $use_open \
-        && run_silent "nvidia-open + utils" pacman_install nvidia-open nvidia-utils nvidia-settings lib32-nvidia-utils \
-        || run_silent "nvidia + utils"      pacman_install nvidia      nvidia-utils nvidia-settings lib32-nvidia-utils
-    grep -q "nvidia_drm" /etc/mkinitcpio.conf 2>/dev/null || {
-        sudo sed -i 's/^MODULES=(\(.*\))/MODULES=(\1 nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
-        run_silent "mkinitcpio rebuild" sudo mkinitcpio -P
-    }
-    grep -q "GBM_BACKEND" /etc/environment 2>/dev/null || \
-        printf '\nGBM_BACKEND=nvidia-drm\n__GLX_VENDOR_LIBRARY_NAME=nvidia\nNVIDIA_DRIVER_CAPABILITIES=all\n' \
-        | sudo tee -a /etc/environment >> "$LOG_FILE"
-    print_warn "Reinicie para ativar os drivers NVIDIA."
-}
+    print_step "Detectando GPU NVIDIA..."
+    local card
+    card=$(lspci 2>/dev/null | grep -i nvidia | head -1 || echo "")
+    print_step "Placa: $card"
 
-install_amd_gpu()  {
-    run_silent "AMD GPU — mesa + vulkan" \
-        pacman_install mesa lib32-mesa vulkan-radeon lib32-vulkan-radeon libva-mesa-driver mesa-vdpau
-}
-install_amd_cpu()  { run_silent "amd-ucode" pacman_install amd-ucode; print_warn "Adicione 'initrd /amd-ucode.img' ao bootloader."; }
-install_intel_gpu(){ run_silent "Intel GPU — mesa + vulkan" pacman_install mesa lib32-mesa vulkan-intel lib32-vulkan-intel intel-media-driver; }
-install_intel_cpu(){ run_silent "intel-ucode" pacman_install intel-ucode; print_warn "Adicione 'initrd /intel-ucode.img' ao bootloader."; }
+    run_silent "ubuntu-drivers" apt_install ubuntu-drivers-common 2>/dev/null || true
 
-install_wallpapers() {
-    mkdir -p "$HOME/Pictures"
-    if [[ -d "$WALLPAPERS_DIR" ]]; then
-        run_silent "atualizando wallpapers" git -C "$WALLPAPERS_DIR" pull
+    # Tenta instalar driver recomendado automaticamente
+    if has ubuntu-drivers; then
+        run_silent "driver NVIDIA (auto)" ubuntu-drivers autoinstall
     else
-        run_silent "clonando wallpapers" git clone "$WALLPAPERS_REPO" "$HOME/Pictures/"
+        run_silent "nvidia-driver" apt_install nvidia-driver-535 nvidia-utils-535
     fi
-    print_ok "Wallpapers em $WALLPAPERS_DIR"
+
+    run_silent "vulkan nvidia" apt_install libvulkan1 vulkan-tools
+
+    print_warn "Reinicie o sistema para ativar os drivers NVIDIA"
 }
 
-install_symlinks() {
-    $HAS_STOW || run_silent "stow" pacman_install stow
-    cd "$DOTFILES_DIR"
-    run_silent "symlinks via stow" stow --adopt .
+install_amd_gpu() {
+    run_silent "AMD GPU — mesa + vulkan" apt_install \
+        mesa-vulkan-drivers libvulkan1 vulkan-tools \
+        mesa-utils va-driver-all
+}
+
+install_fix_mic() {
+    print_step "Configurando cancelamento de ruído do microfone..."
+
+    # Instala PulseAudio com noise cancel
+    run_silent "pulseaudio noise cancel" apt_install pulseaudio-equalizer 2>/dev/null || true
+    run_silent "pipewire noise cancel" apt_install pipewire-audio-client-libraries 2>/dev/null || true
+
+    # Cria config de noise cancellation
+    local pa_conf="$REAL_HOME/.config/pipewire/pipewire.conf.d"
+    as_user mkdir -p "$pa_conf"
+
+    cat > "$pa_conf/99-mic-noise-cancel.conf" << 'EOF'
+context.modules = [
+    {   name = libpipewire-module-filter-chain
+        args = {
+            node.description = "Noise Canceling source"
+            media.name       = "Noise Canceling source"
+            filter.graph = {
+                nodes = [
+                    {
+                        type   = ladspa
+                        name   = rnnoise
+                        plugin = librnnoise_ladspa
+                        label  = noise_suppressor_mono
+                        control = {
+                            "VAD Threshold (%)" = 50.0
+                        }
+                    }
+                ]
+            }
+            capture.props = {
+                node.name      = "capture.rnnoise_source"
+                node.passive   = true
+                audio.rate     = 48000
+            }
+            playback.props = {
+                media.class  = Audio/Source
+                node.name    = "rnnoise_source"
+                audio.rate   = 48000
+            }
+        }
+    }
+]
+EOF
+
+    chown -R "$REAL_USER:$REAL_USER" "$pa_conf"
+
+    # Instala rnnoise
+    run_silent "rnnoise ladspa" apt_install ladspa-sdk 2>/dev/null || true
+    wget -q "https://github.com/werman/noise-suppression-for-voice/releases/latest/download/linux.tar.gz" \
+        -O /tmp/rnnoise.tar.gz >> "$LOG_FILE" 2>&1 && \
+        tar -xzf /tmp/rnnoise.tar.gz -C /tmp >> "$LOG_FILE" 2>&1 && \
+        cp /tmp/linux/ladspa/librnnoise_ladspa.so /usr/lib/ladspa/ >> "$LOG_FILE" 2>&1 || \
+        print_warn "rnnoise não instalado — microfone básico configurado"
+
+    rm -f /tmp/rnnoise.tar.gz
+    print_ok "Configuração de microfone aplicada"
+    print_warn "Selecione 'Noise Canceling source' nas configurações de áudio"
+}
+
+install_tweaks() {
+    print_step "Aplicando tweaks de performance..."
+
+    # Swappiness
+    echo "vm.swappiness=10" > /etc/sysctl.d/99-swappiness.conf
+    sysctl --system >> "$LOG_FILE" 2>&1
+
+    # IRQ Balance
+    apt_install irqbalance >> "$LOG_FILE" 2>&1 || true
+    systemctl enable --now irqbalance >> "$LOG_FILE" 2>&1 || true
+
+    # EarlyOOM
+    apt_install earlyoom >> "$LOG_FILE" 2>&1 || true
+    systemctl enable --now earlyoom >> "$LOG_FILE" 2>&1 || true
+
+    # Preload
+    apt_install preload >> "$LOG_FILE" 2>&1 || true
+    systemctl enable --now preload >> "$LOG_FILE" 2>&1 || true
+
+    print_ok "Tweaks aplicados: swappiness=10, irqbalance, earlyoom, preload"
+}
+
+install_codecs() {
+    run_silent "codecs multimedia" apt_install \
+        ubuntu-restricted-extras 2>/dev/null || \
+    apt_install \
+        gstreamer1.0-plugins-bad \
+        gstreamer1.0-plugins-ugly \
+        gstreamer1.0-plugins-good \
+        gstreamer1.0-libav \
+        libavcodec-extra \
+        libdvd-pkg 2>/dev/null || true
+    print_ok "Codecs instalados"
 }
 
 run_key() {
     case "$1" in
         base)        install_base ;;
-        yay_pkg)     install_yay_pkg ;;
-        paru_pkg)    install_paru_pkg ;;
         zsh)         install_zsh ;;
         nvim)        install_nvim ;;
-        fresh)       install_fresh ;;
         kitty)       install_kitty ;;
         fonts)       install_fonts ;;
-        bibata)      install_bibata ;;
-        qt)          install_qt ;;
-        sddm)        install_sddm ;;
-        pipewire)    install_pipewire ;;
-        bluetooth)   install_bluetooth ;;
-        flatpak)     install_flatpak ;;
+        ffmpeg)      install_ffmpeg ;;
         gh)          install_gh ;;
+        flatpak)     install_flatpak ;;
         brave)       install_brave ;;
         vesktop)     install_vesktop ;;
-        equibop)     install_equibop ;;
         spotify)     install_spotify ;;
         spicetify)   install_spicetify ;;
         gh_desktop)  install_gh_desktop ;;
+        vscode)      install_vscode ;;
         jetbrains)   install_jetbrains ;;
         unity)       install_unity ;;
         steam)       install_steam ;;
         heroic)      install_heroic ;;
-        heroic_flat) install_heroic_flat ;;
         nvidia)      install_nvidia ;;
         amd_gpu)     install_amd_gpu ;;
-        amd_cpu)     install_amd_cpu ;;
-        intel_gpu)   install_intel_gpu ;;
-        intel_cpu)   install_intel_cpu ;;
-        wallpapers)  install_wallpapers ;;
-        symlinks)    install_symlinks ;;
+        fix_mic)     install_fix_mic ;;
+        tweaks)      install_tweaks ;;
+        codecs)      install_codecs ;;
     esac
 }
 
@@ -601,7 +669,6 @@ cleanup() {
     spinner_stop
     tput cnorm 2>/dev/null || true
     tput rmcup 2>/dev/null || true
-    [[ -n "$TMPDIR_WORK" && -d "$TMPDIR_WORK" ]] && rm -rf "$TMPDIR_WORK" || true
 }
 trap cleanup EXIT INT TERM
 
@@ -609,15 +676,18 @@ trap cleanup EXIT INT TERM
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 main() {
-    check_arch
-    : > "$LOG_FILE"
+    if [[ "$PKG_MANAGER" != "apt" ]]; then
+        echo "  ${yellow}Aviso:${reset} Este instalador é otimizado para apt (Mint/Ubuntu/Debian)."
+        echo "  Detectado: $PKG_MANAGER — alguns módulos podem não funcionar."
+        echo
+        printf "  Continuar mesmo assim? [S/n] "; read -r ans
+        [[ "${ans,,}" == "n" ]] && exit 0
+    fi
 
     clear; echo; echo "  Detectando sistema..."
     detect_system
-
     show_banner
-    setup_deps
-
+    bootstrap
     build_catalog
 
     echo "  ${dim}Pressione ENTER para abrir o seletor...${reset}"
@@ -626,16 +696,14 @@ main() {
     run_selector || { echo "  Cancelado."; exit 0; }
     [[ ${#CHOSEN_KEYS[@]} -eq 0 ]] && { echo "  Nada selecionado."; exit 0; }
 
-    # Confirmacao
     clear; echo
-    echo "  ${bold}Itens selecionados para instalacao:${reset}"
+    echo "  ${bold}Itens selecionados:${reset}"
     print_sep
     for k in "${CHOSEN_KEYS[@]}"; do echo "  ${cyan}+${reset}  $k"; done
     print_sep; echo
     printf "  Instalar agora? [S/n] "; read -r ans
     [[ "${ans,,}" == "n" ]] && { echo "  Cancelado."; exit 0; }
 
-    # Instalacao
     clear; echo
     echo "  ${bold}Instalando...${reset}"; echo
 
@@ -648,7 +716,7 @@ main() {
 
     # Resumo
     print_sep
-    echo "  ${bold}Concluido${reset}"
+    echo "  ${bold}Concluído${reset}"
     print_sep
     echo "  ${green}ok${reset}   $((${#CHOSEN_KEYS[@]} - ${#failed[@]})) / ${#CHOSEN_KEYS[@]} instalados"
     [[ ${#failed[@]} -gt 0 ]] && {
@@ -656,6 +724,8 @@ main() {
         for f in "${failed[@]}"; do echo "       ${gray}- $f${reset}"; done
         echo "  ${dim}log completo: $LOG_FILE${reset}"
     }
+    echo
+    print_warn "Recomendado: reinicie o sistema após o setup"
     echo
 }
 

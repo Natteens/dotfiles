@@ -1,124 +1,277 @@
-<div align="center">
-
-# 🌙 dotfiles
-
-**Arch Linux · Hyprland · Kitty · Zsh · DankMaterialShell**
-
-![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white)
-![Hyprland](https://img.shields.io/badge/Hyprland-58E1FF?style=for-the-badge&logo=wayland&logoColor=black)
-![Zsh](https://img.shields.io/badge/Zsh-F15A24?style=for-the-badge&logo=gnu-bash&logoColor=white)
-![Neovim](https://img.shields.io/badge/Neovim-57A143?style=for-the-badge&logo=neovim&logoColor=white)
-
-</div>
-
----
-
-## 📦 O que está incluído
-
-| Componente | Descrição |
-|---|---|
-| `.zshrc` | Shell com zinit, powerlevel10k, autosuggestions, syntax highlighting |
-| `install.sh` | Instalador interativo com checklist |
-
----
-
-## 🔧 Dependências
-
-Antes de instalar, você precisa de:
-
-- **Arch Linux** (ou derivado)
-- **git** — para clonar o repo
-- **stow** — para criar os symlinks
-- **yay** — para pacotes do AUR (instalado automaticamente pelo `install.sh` se não tiver)
-
----
-
-## 🚀 Instalação rápida
-
-```bash
-git clone https://github.com/Natteens/dotfiles.git ~/dotfiles
-cd ~/dotfiles
-chmod +x install.sh
-./install.sh
-```
-
-O instalador vai te mostrar uma checklist com tudo que pode ser instalado. Você escolhe o que quiser.
-
----
-
-## 📋 O que o instalador oferece
-
-```
-[ ] Pacotes base         — git, nano, make, cmake, base-devel
-[ ] zsh + zinit          — shell, gerenciador de plugins, fzf, zoxide
-[ ] neovim               — editor de texto
-[ ] fresh-editor         — editor minimalista (AUR)
-[ ] fish                 — shell alternativo
-[ ] Wallpapers           — clona ~/Pictures/Wallpapers do GitHub
-[ ] Symlinks via stow    — aplica os dotfiles no sistema
-```
-
----
-
-## 🐚 Shell (zsh)
-
-Configurado com:
-
-- **[Powerlevel10k](https://github.com/romkatv/powerlevel10k)** — prompt customizável com wizard interativo
-- **[zinit](https://github.com/zdharma-continuum/zinit)** — gerenciador de plugins rápido
-- **zsh-autosuggestions** — sugestões inline baseadas no histórico
-- **zsh-syntax-highlighting** — coloração de comandos em tempo real
-- **zsh-completions** — completions extras
-- **fzf-tab** — menu de completion com fuzzy search
-- **fzf** — fuzzy finder geral
-- **zoxide** — navegação inteligente de diretórios (`cd` turbinado)
-
-Para reconfigurar o prompt a qualquer momento:
-
-```bash
-p10k configure
-```
-
----
-
-## 🖼️ Wallpapers
-
-Os wallpapers ficam em `~/Pictures/Wallpapers` e são clonados de:
-
-```
-https://github.com/Natteens/Wallpapers
-```
-
----
-
-## 🔗 Symlinks
-
-Os dotfiles são gerenciados com [GNU Stow](https://www.gnu.org/software/stow/). Para aplicar manualmente:
-
-```bash
-cd ~/dotfiles
-stow .
-```
-
-Para remover os symlinks:
-
-```bash
-stow -D .
-```
-
----
-
-## 📁 Estrutura
-
-```
-dotfiles/
-├── .zshrc          # Configuração do zsh
-├── install.sh      # Instalador interativo
-└── README.md
-```
-
----
-
-<div align="center">
-  <sub>feito por <a href="https://github.com/Natteens">Natteens</a></sub>
-</div>
+{
+    "input": {
+        "blocklist": [],
+        "compressor#0": {
+            "attack": 15.0,
+            "boost-amount": 0.0,
+            "boost-threshold": -72.0,
+            "bypass": false,
+            "dry": -80.01,
+            "hpf-frequency": 10.0,
+            "hpf-mode": "Off",
+            "input-gain": 0.0,
+            "input-to-link": 0.0,
+            "input-to-sidechain": 0.0,
+            "knee": -6.0,
+            "link-to-input": 0.0,
+            "link-to-sidechain": 0.0,
+            "lpf-frequency": 20000.0,
+            "lpf-mode": "Off",
+            "makeup": 3.0,
+            "mode": "Downward",
+            "output-gain": 0.0,
+            "ratio": 3.0,
+            "release": 200.0,
+            "release-threshold": -40.0,
+            "sidechain": {
+                "lookahead": 0.0,
+                "mode": "RMS",
+                "preamp": 0.0,
+                "reactivity": 10.0,
+                "source": "Middle",
+                "stereo-split-source": "Left/Right",
+                "type": "Feed-forward"
+            },
+            "sidechain-to-input": 0.0,
+            "sidechain-to-link": 0.0,
+            "stereo-split": false,
+            "threshold": -18.0,
+            "wet": 0.0
+        },
+        "deepfilternet#0": {
+            "attenuation-limit": 100.0,
+            "bypass": false,
+            "input-gain": 0.0,
+            "max-df-processing-threshold": 20.0,
+            "max-erb-processing-threshold": 30.0,
+            "min-processing-buffer": 0,
+            "min-processing-threshold": 5.0,
+            "output-gain": 0.0,
+            "post-filter-beta": 0.019999999552965164
+        },
+        "deesser#0": {
+            "bypass": false,
+            "detection": "RMS",
+            "f1-freq": 4000.0,
+            "f1-level": -6.0,
+            "f2-freq": 8000.0,
+            "f2-level": -6.0,
+            "f2-q": 1.5,
+            "input-gain": 0.0,
+            "laxity": 15,
+            "makeup": 0.0,
+            "mode": "Split",
+            "output-gain": 0.0,
+            "ratio": 3.0,
+            "sc-listen": false,
+            "threshold": -22.0
+        },
+        "equalizer#0": {
+            "balance": 0.1,
+            "bypass": false,
+            "input-gain": 0.0,
+            "left": {
+                "band0": {
+                    "frequency": 80.0,
+                    "gain": 0.0,
+                    "mode": "RLC (BT)",
+                    "mute": false,
+                    "q": 0.7,
+                    "slope": "x2",
+                    "solo": false,
+                    "type": "Hi-pass",
+                    "width": 4.0
+                },
+                "band1": {
+                    "frequency": 220.0,
+                    "gain": -2.0,
+                    "mode": "RLC (MT)",
+                    "mute": false,
+                    "q": 0.7,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band2": {
+                    "frequency": 350.0,
+                    "gain": -2.0,
+                    "mode": "BWC (MT)",
+                    "mute": false,
+                    "q": 1.2,
+                    "slope": "x2",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band3": {
+                    "frequency": 3500.0,
+                    "gain": 2.0,
+                    "mode": "BWC (BT)",
+                    "mute": false,
+                    "q": 0.9,
+                    "slope": "x2",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band4": {
+                    "frequency": 10000.0,
+                    "gain": 2.0,
+                    "mode": "LRX (MT)",
+                    "mute": false,
+                    "q": 0.7,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Hi-shelf",
+                    "width": 4.0
+                }
+            },
+            "mode": "IIR",
+            "num-bands": 5,
+            "output-gain": 0.0,
+            "pitch-left": 0.0,
+            "pitch-right": 0.0,
+            "right": {
+                "band0": {
+                    "frequency": 80.0,
+                    "gain": 0.0,
+                    "mode": "RLC (BT)",
+                    "mute": false,
+                    "q": 0.7,
+                    "slope": "x2",
+                    "solo": false,
+                    "type": "Hi-pass",
+                    "width": 4.0
+                },
+                "band1": {
+                    "frequency": 220.0,
+                    "gain": -2.0,
+                    "mode": "RLC (MT)",
+                    "mute": false,
+                    "q": 0.7,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band2": {
+                    "frequency": 350.0,
+                    "gain": -2.0,
+                    "mode": "BWC (MT)",
+                    "mute": false,
+                    "q": 1.2,
+                    "slope": "x2",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band3": {
+                    "frequency": 3500.0,
+                    "gain": 2.0,
+                    "mode": "BWC (BT)",
+                    "mute": false,
+                    "q": 0.9,
+                    "slope": "x2",
+                    "solo": false,
+                    "type": "Bell",
+                    "width": 4.0
+                },
+                "band4": {
+                    "frequency": 10000.0,
+                    "gain": 2.0,
+                    "mode": "LRX (MT)",
+                    "mute": false,
+                    "q": 0.7,
+                    "slope": "x1",
+                    "solo": false,
+                    "type": "Hi-shelf",
+                    "width": 4.0
+                }
+            },
+            "split-channels": false
+        },
+        "gate#0": {
+            "attack": 5.0,
+            "bypass": false,
+            "curve-threshold": -50.0,
+            "curve-zone": -2.0,
+            "dry": -80.01,
+            "hpf-frequency": 10.0,
+            "hpf-mode": "Off",
+            "hysteresis": true,
+            "hysteresis-threshold": -3.0,
+            "hysteresis-zone": -1.0,
+            "input-gain": 0.0,
+            "input-to-link": 0.0,
+            "input-to-sidechain": 0.0,
+            "link-to-input": 0.0,
+            "link-to-sidechain": 0.0,
+            "lpf-frequency": 20000.0,
+            "lpf-mode": "Off",
+            "makeup": 1.0,
+            "output-gain": 0.0,
+            "reduction": -12.0,
+            "release": 250.0,
+            "sidechain": {
+                "lookahead": 0.0,
+                "mode": "RMS",
+                "preamp": 0.0,
+                "reactivity": 10.0,
+                "source": "Middle",
+                "stereo-split-source": "Left/Right",
+                "type": "Internal"
+            },
+            "sidechain-to-input": 0.0,
+            "sidechain-to-link": 0.0,
+            "stereo-split": false,
+            "wet": -1.0
+        },
+        "limiter#0": {
+            "alr": false,
+            "alr-attack": 5.0,
+            "alr-knee": 0.0,
+            "alr-release": 50.0,
+            "attack": 2.0,
+            "bypass": false,
+            "dithering": "16bit",
+            "gain-boost": false,
+            "input-gain": 0.0,
+            "input-to-link": 0.0,
+            "input-to-sidechain": 0.0,
+            "link-to-input": 0.0,
+            "link-to-sidechain": 0.0,
+            "lookahead": 2.0,
+            "mode": "Herm Wide",
+            "output-gain": 0.0,
+            "oversampling": "None",
+            "release": 5.0,
+            "sidechain-preamp": 0.0,
+            "sidechain-to-input": 0.0,
+            "sidechain-to-link": 0.0,
+            "sidechain-type": "Internal",
+            "stereo-link": 100.0,
+            "threshold": -1.5
+        },
+        "plugins_order": [
+            "rnnoise#0",
+            "deepfilternet#0",
+            "gate#0",
+            "equalizer#0",
+            "compressor#0",
+            "deesser#0",
+            "limiter#0"
+        ],
+        "rnnoise#0": {
+            "bypass": false,
+            "enable-vad": false,
+            "input-gain": 0.0,
+            "model-name": "\"\"",
+            "output-gain": 0.0,
+            "release": 20.0,
+            "use-standard-model": true,
+            "vad-thres": 30.0,
+            "wet": 0.0
+        }
+    }
+}
