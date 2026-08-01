@@ -21,7 +21,6 @@ configuration {
     muted: #91879f;
     accent: #9d7cd8;
     selected: #302444;
-    urgent: #e06c75;
     transparent: #00000000;
 }
 
@@ -79,7 +78,7 @@ element {
     text-color: @foreground;
 }
 
-element selected {
+element selected.normal {
     background-color: @selected;
     text-color: @foreground;
 }
