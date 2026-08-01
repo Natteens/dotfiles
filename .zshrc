@@ -5,7 +5,8 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-PATH="$HOME/.go/bin:$PATH"
+# User-local tools: Codex CLI, Kitty, zoxide, Rust and Go binaries.
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.go/bin:$PATH"
 
 # Set the directory we want to store zinit and plugins 
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
@@ -31,7 +32,9 @@ zinit light Aloxaf/fzf-tab
 # Add in snippets
 zinit snippet OMZP::git
 zinit snippet OMZP::sudo
-zinit snippet OMZP::archlinux
+if [[ "${ID:-}" == "arch" || "${ID_LIKE:-}" == *arch* ]]; then
+    zinit snippet OMZP::archlinux
+fi
 zinit snippet OMZP::aws
 zinit snippet OMZP::kubectl
 zinit snippet OMZP::kubectx
@@ -79,4 +82,6 @@ eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
 # Keyring
-export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/gcr/ssh
+if [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$XDG_RUNTIME_DIR/gcr/ssh" ]]; then
+    export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/gcr/ssh"
+fi
