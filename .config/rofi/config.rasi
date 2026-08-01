@@ -1,0 +1,107 @@
+configuration {
+    modi: "drun,run";
+    show-icons: true;
+    drun-display-format: "{name}";
+    display-drun: "Aplicativos";
+    display-run: "Comandos";
+    font: "JetBrainsMono Nerd Font 12";
+    matching: "fuzzy";
+    sort: true;
+    sorting-method: "fzf";
+    case-sensitive: false;
+    cycle: true;
+    click-to-exit: true;
+    terminal: "ptyxis";
+}
+
+* {
+    background: #15121f;
+    background-alt: #211b30;
+    foreground: #eee9f7;
+    muted: #91879f;
+    accent: #9d7cd8;
+    selected: #302444;
+    urgent: #e06c75;
+    transparent: #00000000;
+}
+
+window {
+    width: 46%;
+    location: center;
+    anchor: center;
+    background-color: @background;
+    border: 2px;
+    border-color: @accent;
+    border-radius: 16px;
+    padding: 10px;
+}
+
+mainbox {
+    spacing: 10px;
+    padding: 8px;
+    background-color: @transparent;
+}
+
+inputbar {
+    children: [ prompt, entry ];
+    spacing: 10px;
+    padding: 12px 14px;
+    background-color: @background-alt;
+    border-radius: 10px;
+}
+
+prompt {
+    text-color: @accent;
+    background-color: @transparent;
+}
+
+entry {
+    placeholder: "Pesquisar aplicativos...";
+    placeholder-color: @muted;
+    text-color: @foreground;
+    background-color: @transparent;
+}
+
+listview {
+    columns: 1;
+    lines: 8;
+    spacing: 4px;
+    fixed-height: false;
+    scrollbar: false;
+    background-color: @transparent;
+}
+
+element {
+    padding: 10px 12px;
+    spacing: 12px;
+    border-radius: 9px;
+    background-color: @transparent;
+    text-color: @foreground;
+}
+
+element selected {
+    background-color: @selected;
+    text-color: @foreground;
+}
+
+element-icon {
+    size: 24px;
+    background-color: @transparent;
+}
+
+element-text {
+    vertical-align: 0.5;
+    background-color: @transparent;
+    text-color: inherit;
+}
+
+message {
+    padding: 10px;
+    border-radius: 9px;
+    background-color: @background-alt;
+}
+
+textbox {
+    text-color: @foreground;
+    background-color: @transparent;
+}
