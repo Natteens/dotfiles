@@ -332,6 +332,33 @@ install_base() {
         apt-transport-https xdg-utils
 }
 
+install_zsh_config() {
+    local src="$DOTFILES_DIR/.zshrc"
+    local dst="$REAL_HOME/.zshrc"
+
+    if [[ ! -f "$src" ]]; then
+        print_warn ".zshrc não encontrado — configuração não aplicada"
+        return 0
+    fi
+
+    if [[ -f "$dst" && ! -L "$dst" ]]; then
+        local backup="$dst.backup.$(date +%Y%m%d-%H%M%S)"
+        as_user cp "$dst" "$backup" || {
+            print_warn "não foi possível criar backup de ~/.zshrc"
+            return 0
+        }
+        print_ok "backup de ~/.zshrc criado"
+    fi
+
+    if as_user cp "$src" "$dst"; then
+        chown "$REAL_USER:$REAL_USER" "$dst"
+        chmod 0644 "$dst"
+        print_ok "~/.zshrc aplicado"
+    else
+        print_warn "não foi possível aplicar ~/.zshrc"
+    fi
+}
+
 install_zsh() {
     has zsh    || run_silent "zsh"    apt_install zsh
     has fzf    || run_silent "fzf"    apt_install fzf
@@ -341,6 +368,9 @@ install_zsh() {
     chsh -s /usr/bin/zsh "$REAL_USER" \
         && print_ok "zsh = shell padrão" \
         || print_warn "rode 'chsh -s /usr/bin/zsh' manualmente"
+
+
+    install_zsh_config
 }
 
 install_nvim() {
